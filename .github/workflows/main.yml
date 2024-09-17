@@ -1,0 +1,73 @@
+name: Android CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - '*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Clonar o repositório
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    # Configurar ferramentas Android
+    - name: Set up JDK 11
+      uses: actions/setup-java@v1
+      with:
+        java-version: '11'
+
+    - name: Install Android SDK
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y lib32stdc++6 lib32z1
+        wget "https://dl.google.com/android/repository/commandlinetools-linux-8092744_latest.zip"
+        mkdir -p $ANDROID_HOME/cmdline-tools
+        unzip commandlinetools-linux-8092744_latest.zip -d $ANDROID_HOME/cmdline-tools
+        yes | sdkmanager --licenses
+
+    # Instalar dependências e ferramentas necessárias
+    - name: Install missing Android tools
+      run: ./gradlew dependencies
+
+    # Altera o versionCode e versionName
+    # Aqui você precisará de um script ou action para isso, que pode ser substituído por um script Bash
+    - name: Change versionCode and versionName
+      run: |
+        sed -i 's/versionCode [0-9]*/versionCode ${{ github.run_number }}/' ${{ env.PROJECT_LOCATION }}/${{ env.MODULE }}/build.gradle
+        echo "Version code updated"
+
+    # Executar Android Lint
+    - name: Run Android Lint
+      run: ./gradlew lint${{ env.VARIANT }} --no-daemon
+      env:
+        PROJECT_LOCATION: ${{ env.PROJECT_LOCATION }}
+        VARIANT: ${{ env.VARIANT }}
+
+    # Executar testes unitários
+    - name: Run Unit Tests
+      run: ./gradlew test${{ env.VARIANT }} --no-daemon
+      env:
+        PROJECT_LOCATION: ${{ env.PROJECT_LOCATION }}
+        VARIANT: ${{ env.VARIANT }}
+
+    # Compilar o APK
+    - name: Build APK
+      run: ./gradlew assemble${{ env.VARIANT }} --no-daemon
+      env:
+        PROJECT_LOCATION: ${{ env.PROJECT_LOCATION }}
+        MODULE: ${{ env.MODULE }}
+        VARIANT: ${{ env.VARIANT }}
+
+    # Assinar APK (somente se existir keystore configurado)
+    - name: Sign APK
+      if: ${{ secrets.BITRISEIO_ANDROID_KEYSTORE_URL != '' }}
+      run: |
+        # Aqui você precisará assinar o APK usando o keystore
+        echo "Signing APK"
