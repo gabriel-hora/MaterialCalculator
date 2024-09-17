@@ -1,9 +1,10 @@
 name: Android CI
 
+# Disparar o workflow em push ou pull request nas branches especificadas
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
     branches:
       - '*'
@@ -13,61 +14,42 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # Clonar o repositório
+    # 1. Clonar o repositório
     - name: Checkout repository
       uses: actions/checkout@v2
 
-    # Configurar ferramentas Android
+    # 2. Configurar JDK para Android
     - name: Set up JDK 11
       uses: actions/setup-java@v1
       with:
         java-version: '11'
 
-    - name: Install Android SDK
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y lib32stdc++6 lib32z1
-        wget "https://dl.google.com/android/repository/commandlinetools-linux-8092744_latest.zip"
-        mkdir -p $ANDROID_HOME/cmdline-tools
-        unzip commandlinetools-linux-8092744_latest.zip -d $ANDROID_HOME/cmdline-tools
-        yes | sdkmanager --licenses
+    # 3. Configurar Android SDK
+    - name: Set up Android SDK
+      uses: android-actions/setup-android@v2
 
-    # Instalar dependências e ferramentas necessárias
-    - name: Install missing Android tools
+    # 4. Instalar dependências do Gradle
+    - name: Install dependencies
       run: ./gradlew dependencies
 
-    # Altera o versionCode e versionName
-    # Aqui você precisará de um script ou action para isso, que pode ser substituído por um script Bash
-    - name: Change versionCode and versionName
-      run: |
-        sed -i 's/versionCode [0-9]*/versionCode ${{ github.run_number }}/' ${{ env.PROJECT_LOCATION }}/${{ env.MODULE }}/build.gradle
-        echo "Version code updated"
-
-    # Executar Android Lint
+    # 5. Verificar lints do projeto
     - name: Run Android Lint
-      run: ./gradlew lint${{ env.VARIANT }} --no-daemon
-      env:
-        PROJECT_LOCATION: ${{ env.PROJECT_LOCATION }}
-        VARIANT: ${{ env.VARIANT }}
+      run: ./gradlew lint
+      continue-on-error: false # Falhar se houver erros de lint
 
-    # Executar testes unitários
+    # 6. Rodar os testes
     - name: Run Unit Tests
-      run: ./gradlew test${{ env.VARIANT }} --no-daemon
-      env:
-        PROJECT_LOCATION: ${{ env.PROJECT_LOCATION }}
-        VARIANT: ${{ env.VARIANT }}
+      run: ./gradlew test
+      continue-on-error: false # Falhar se houver falhas nos testes
 
-    # Compilar o APK
+    # 7. Compilar o APK
     - name: Build APK
-      run: ./gradlew assemble${{ env.VARIANT }} --no-daemon
-      env:
-        PROJECT_LOCATION: ${{ env.PROJECT_LOCATION }}
-        MODULE: ${{ env.MODULE }}
-        VARIANT: ${{ env.VARIANT }}
+      run: ./gradlew assembleDebug
+      continue-on-error: false # Falhar se a build falhar
 
-    # Assinar APK (somente se existir keystore configurado)
-    - name: Sign APK
-      if: ${{ secrets.BITRISEIO_ANDROID_KEYSTORE_URL != '' }}
-      run: |
-        # Aqui você precisará assinar o APK usando o keystore
-        echo "Signing APK"
+    # 8. Publicar o APK como um artefato do GitHub
+    - name: Upload APK
+      uses: actions/upload-artifact@v2
+      with:
+        name: apk
+        path: app/build/outputs/apk/debug/app-debug.apk
